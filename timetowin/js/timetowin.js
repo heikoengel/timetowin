@@ -18,30 +18,92 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 **/
 
-function fmtTime(time) {
-    /** get time object as string in the format "HH:MM" **/
-    return ("0" + time.getHours()).slice(-2) + ":" +
-        ("0" + time.getMinutes()).slice(-2);
+class Timestamp {
+
+    constructor(hour_or_ts, minute=0) {
+        if (hour_or_ts instanceof Timestamp) {
+            this.hour = hour_or_ts.hour;
+            this.minute = hour_or_ts.minute;
+        } else {
+            this.hour = hour_or_ts;
+            this.minute = minute;
+        }
+    }
+
+    add(ts, min=0) {
+        if (ts instanceof Timestamp) {
+            this.hour += ts.hour;
+            this.minute += ts.minute;
+        } else {
+            this.hour += ts;
+            this.minute += min;
+        }
+        while (this.minute > 60) {
+            this.hour += 1;
+            this.minute -= 60;
+        }
+    }
+
+    sub(ts, min=0) {
+        if (ts instanceof Timestamp) {
+            this.hour -= ts.hour;
+            this.minute -= ts.minute;
+        } else {
+            this.hour -= ts;
+            this.minute -= min;
+        }
+        while (this.minute < 0) {
+            this.hour -= 1;
+            this.minute += 60;
+        }
+    }
+
+    minutes() {
+        return this.hour * 60 + this.minute;
+    }
+
+    set(hour, min=0) {
+        if (hour instanceof Timestamp) {
+            this.hour = hour.hour;
+            this.minute = hour.minute;
+        } else {
+            this.hour = hour;
+            this.minute = min;
+        }
+    }
+
+    cmp(op, ts, min=0) {
+        let minutes = 0;
+        if (ts instanceof Timestamp) {
+            minutes = ts.hour * 60 + ts.minute;
+        } else {
+            minutes = ts * 60 + min;
+        }
+        switch(op) {
+        case "lt":
+            return this.minutes() < minutes;
+        case "gt":
+            return this.minutes() > minutes;
+        case "lte":
+            return this.minutes() <= minutes;
+        case "gte":
+            return this.minutes() >= minutes;
+        default:
+            throw "Invalid compare operation";
+        }
+    }
+
+    strHHMM() {
+        return ("0" + this.hour).slice(-2) + ":" +
+            ("0" + this.minute).slice(-2);
+    }
+
+    strDec(digits=2) {
+        return parseFloat(this.minutes() / 60).toFixed(digits);
+    }
+
 }
 
-function fmtDelta(deltaminutes) {
-    /** get timedelta in minutes as "XX min (X.YZh)" **/
-    let hours_frac = parseFloat(deltaminutes / 60).toFixed(2);
-    return deltaminutes + " min (" + hours_frac + "h)";
-}
-
-function deltaHHMM(deltaminutes) {
-    /** get a timedelta in minutes as a string of hours and minutes **/
-    let hours = Math.floor(deltaminutes / 60);
-    let minutes = deltaminutes % 60;
-    return hours + "h " + minutes + " min";
-}
-
-function deltaDec(deltaminutes, digits=2) {
-    /** get a timedelta in minutes as fixed number of hours with [digits] digits **/
-    let hours_frac = parseFloat(deltaminutes / 60).toFixed(digits);
-    return hours_frac + "h";
-}
 
 function addRow(fields, obj, trclass="") {
     /** add a row of fields to a table object **/
@@ -55,13 +117,9 @@ function addRow(fields, obj, trclass="") {
     }
 }
 
-function int(number) {
-    /** shift by 0 ensures that the result is an integer and not fixed/float **/
-    return number >> 0;
-}
 
 function get_time(str) {
-    /** get Date() object from a time string **/
+    /** get Timestamp() object from a time string **/
     var result = {
         value: 0,
         err: "\"" + str + "\"" + " is not a valid time"};
@@ -82,19 +140,12 @@ function get_time(str) {
             return result;
         }
     }
-    var date = new Date(1970, 1, 1, hour, minute); // year/month/day don't matter
-    if (isNaN(date)) {
-        return result;
-    }
-    result.value = date;
+    var ts = new Timestamp(hour, minute);
+    result.value = ts;
     result.err = "";
     return result;
 }
 
-function dec_time(time) {
-    /** get time as decimal, e.g. dec_time(get_time("12:15")) == 1215 **/
-    return time.getHours() * 100 + time.getMinutes();
-}
 
 function update_time_calc(){
 
@@ -108,14 +159,15 @@ function update_time_calc(){
 
     const table = document.querySelector("#results-table");
     for (var row = table.rows.length - 1; row >= 0; row--) {
-        table.deleteRow(row);
+        table.deleteRow(row);  // delete all old rows from table
     }
 
+    // get text from input field and split it
     const timefield = document.querySelector("#times");
     let values = timefield.value.split(/[\s,-.;\n\r]+/);
 
-    var times = new Array();
-    var timerange = new Array();
+    var timerange = new Array(); // timerange tuple {start, end}
+    var times = new Array(); // list of timerange tuples
     for(var i = 0; i < values.length; i++) {
         if(values[i].length == 0) {
             continue; // skip empty elements due to linebreaks, blanks, etc...
@@ -128,26 +180,29 @@ function update_time_calc(){
             return;
         };
         timerange.push(time.value);
+
         // arrange timestamps in pairs {start, end}
         if (timerange.length == 2) {
             // make sure time pair is in the right order
-            if (timerange[0] > timerange[1]) {
-                error.textContent = "Invalid range: " + fmtTime(timerange[0]) +
-                    " is after " + fmtTime(timerange[1]);
+            if (timerange[0].cmp("gt", timerange[1])) {
+                error.textContent = "Invalid order of timestamps: " +
+                    timerange[0].strHHMM() + " is after " +
+                    timerange[1].strHHMM();
                 error.style.display = "block";
                 return
             }
             // make sure start of current pair is after end of the last pair
-            if (times.length > 0 && timerange[0] < times[times.length-1][1]) {
-                error.textContent = "Invalid range: " + fmtTime(timerange[0]) +
-                    " is after " + fmtTime(times[times.length-1][1]);
+            if (times.length > 0 && timerange[0].cmp("lt", times[times.length-1][1])) {
+                error.textContent = "Invalid order of ranges: " + timerange[0].strHHMM() +
+                    " is after " + times[times.length-1][1].strHHMM();
                 error.style.display = "block";
                 return
             }
-            times.push(timerange);
-            timerange = new Array();
+            times.push(timerange); // push to times list
+            timerange = new Array(); // clear timerange tuple
         }
     }
+
     if (timerange.length == 1) {
         error.textContent = "Odd number of timestamps, add another time entry or \"now\" for the current time";
         error.style.display = "block";
@@ -159,85 +214,110 @@ function update_time_calc(){
         return;
     }
 
-    var total_minutes = 0;
-    let dec_start = dec_time(times[0][0]); // start time as decimal
-    let dec_end = dec_time(times[times.length-1][1]); // end time as decimal
+    var total_time = new Timestamp(0, 0);
+    let start = times[0][0];
+    let end = times[times.length-1][1];
 
-    let morning_break = int(15 * 60 * 1000);
-    if (dec_start >= 930) {
-        morning_break = 0; // No morning break when starting at or later than 9:30
+    let morning_break = new Timestamp(0, 15); // 15 minutes
+    if (start.cmp("gte", 9, 30)) {
+        morning_break.set(0); // No morning break when starting at or later than 9:30
     }
-    if (dec_end <= 915) {
-        morning_break = 0; // No morning break when end time before 9:15
+    if (end.cmp("lte", 9, 15)) {
+        morning_break.set(0); // No morning break when end time before 9:15
     }
-    if (dec_start > 915 && dec_start < 930) {
+    if (start.cmp("gte", 9, 15) && start.cmp("lt", 9, 30)) {
         // start after 9:15 but before 9:30 -> reduce break
-        morning_break = int((930 - dec_start) * 60 * 1000);
+        morning_break.set(9, 30);
+        morning_break.sub(start);
     }
 
-    let lunch_break = int(30 * 60 * 1000);
-    if (dec_start >= 1230) {
-        lunch_break = 0; // No lunch break when start time after 12:30
+    let lunch_break = new Timestamp(0, 30); // 30 minutes
+    if (start.cmp("gte", 12, 30)) {
+        lunch_break.set(0); // No lunch break when start time after 12:30
     }
-    if (dec_end <= 1230) {
-        lunch_break = 0; // No lunch break when stopping before 12:30
+    else if (end.cmp("lte", 12, 30)) {
+        lunch_break.set(0); // No lunch break when stopping before 12:30
     }
-    if (dec_start > 1200 && dec_start < 1230) {
+    else if (start.cmp("gt", 12, 00) && start.cmp("lt", 12, 30)) {
         // start time after 12:00 but before 12:30 -> reduce break
-        lunch_break = int((1230 - dec_start) * 60 * 1000);
+        lunch_break.set(12, 30);
+        lunch_break.sub(start);
     }
-    if (dec_end > 1230 && dec_end < 1300) {
-        //end time after 12:30 but before 13:00 -> reduce break
-        lunch_break = int((30 - (1260 - dec_end)) * 60 * 1000);
+    else if (end.cmp("gt", 12, 30) && end.cmp("lt", 13, 00)) {
+        // end time after 12:30 but before 13:00 -> reduce break
+        let delta = new Timestamp(13, 00);
+        delta.sub(end);
+        lunch_break.sub(delta);
     }
 
     var data = Array();
     for (var i = 0; i < times.length; i ++ ) {
         // time delta is in milliseconds
-        let delta = int((times[i][1] - times[i][0]) / 1000 / 60);
-        total_minutes += delta;
-        var range = fmtTime(times[i][0]) + " - " + fmtTime(times[i][1]);
-        var delta_hhmm = deltaHHMM(delta);
-        var delta_dec = deltaDec(delta);
+        let delta = new Timestamp(times[i][1]);
+        delta.sub(times[i][0]);
+        total_time.add(delta);
+        var range = times[i][0].strHHMM() + " - " + times[i][1].strHHMM();
+        var delta_hhmm = delta.strHHMM();
+        var delta_dec = delta.strDec();
         let entry = [range, delta_hhmm, delta_dec];
         data.push(entry);
 
-        if ((i < times.length - 1) && (times[i+1][0] > times[i][1])) {
+        if ((i < times.length - 1) && times[i+1][0].cmp("gt", times[i][1])) {
             // non-zero break
-            if (dec_time(times[i][1]) <= 930 && dec_time(times[i+1][0]) > 915) {
+            if (times[i][1].cmp("lte", 9, 30) && times[i+1][0].cmp("gte", 9, 15)) {
                 // break between 9:15 and 9:30
-                let break_time = (times[i+1][0] - times[i][1]);
-                morning_break -=  Math.min(break_time, int(15 * 60 * 1000));
-            }
-            if (dec_time(times[i][1]) <= 1300 && dec_time(times[i+1][0]) > 1200) {
-                // break between 12:00 and 13:00
-                let break_start = get_time("12:00").value;
-                if (times[i][1] > break_start) {
+                let break_start = new Timestamp(9, 15);
+                if (times[i][1].cmp("gt", break_start)) {
                     break_start = times[i][1];
                 }
-                let break_end = get_time("13:00").value;
-                if (times[i+1][0] < break_end) {
+                let break_end = new Timestamp(9, 30);
+                if (times[i+1][0].cmp("lt", break_end)) {
                     break_end = times[i+1][0];
                 }
-                let break_time = (break_end - break_start);
-                lunch_break -= Math.min(break_time, int(30 * 60 * 1000));
+                let break_time = new Timestamp(break_end);
+                break_time.sub(break_start);
+                if (break_time.minutes() > 15) {
+                    break_time.set(0, 15);
+                }
+                morning_break.sub(break_time);
+            }
+            if (times[i][1].cmp("lte", 13, 00) && times[i+1][0].cmp("gte", 12, 00)) {
+                // break between 12:00 and 13:00
+                let break_start = new Timestamp(12, 00);
+                if (times[i][1].cmp("gt", break_start)) {
+                    break_start = times[i][1];
+                }
+                let break_end = new Timestamp(13, 00);
+                if (times[i+1][0].cmp("lt", break_end)) {
+                    break_end = times[i+1][0];
+                }
+                let break_time = new Timestamp(break_end);
+                break_time.sub(break_start);
+                if (break_time.minutes() > 30) {
+                    break_time.set(0, 30);
+                }
+                lunch_break.sub(break_time);
             }
         }
     }
-    morning_break /= (60000); // microseconds to minutes
-    lunch_break /= (60000);
-    result.textContent = "Subtracted " + fmtDelta(morning_break) +
-        " for morning  break and " + fmtDelta(lunch_break) +
-        " for lunchtime break";
-    let effective_delta = total_minutes - morning_break - lunch_break;
-    //console.log("morning:" + int(morning_break / 1000 / 60));
-    //console.log("lunch:" + int(lunch_break / 1000 / 60));
 
+    result.textContent = "Subtracted " + morning_break.strHHMM() + " (" +
+        morning_break.strDec() + "h) for morning  break and " +
+        lunch_break.strHHMM() + " (" + lunch_break.strDec() +
+        "h) for lunchtime break";
+
+    // reduce total time by breaks
+    let effective_delta = new Timestamp(total_time);
+    effective_delta.sub(morning_break);
+    effective_delta.sub(lunch_break);
+
+    // fill results into the table
     for (var row = 0; row < data.length; row++) {
         addRow(data[row], table);
     }
 
-    let entry = ["Total", deltaHHMM(effective_delta), deltaDec(effective_delta)];
+    // append the 'total' row to the table
+    let entry = ["Total", effective_delta.strHHMM(), effective_delta.strDec()];
     addRow(entry, table, "table-success");
 
     result.style.display = "block";

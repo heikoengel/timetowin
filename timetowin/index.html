@@ -17,26 +17,23 @@
         <div class="col-md-8 form-group">
           <label for="exampleFormControlTextarea1">Enter time ranges:</label>
           <textarea class="form-control" id="times" rows="5"
-                    placeholder="09:00 - 12:00&#10;13:00 - now">
-          </textarea>
+                    placeholder="09:00 - 12:00&#10;13:00 - now"></textarea>
           <button type="button" class="btn btn-primary"
                   id="btn-update">Update</button>
         </div>
-
-
         <div class="col-md-4">
           <div class="alert alert-warning" id="error-message"
                role="alert" style="display:none"></div>
         </div>
-
       </div>
-      <div class="row">
+
+      <div class="row py-3">
         <div class="col-md-12">
           <table class="table table-striped">
             <thead>
               <th scope="col">Time range</th>
               <th scope="col">Time Delta (hh:mm)</th>
-              <th scope="col">Time Delta (decimal)</th>
+              <th scope="col">Time Delta (h)</th>
             </thead>
             <tbody id="results-table">
               <tr class="table-success">
@@ -53,7 +50,37 @@
         </div>
 
       </div>
+
+      <div class="row py-3">
+        <div class="col-md-12">
+          <div class="card">
+            <div class="card-body">
+              <h5 class="card-title">How it works</h5>
+              <p="card-text"><i>Time to WIN</i> calcuates the total
+                time from a given list of time ranges, automatically
+                subtracting breaks:
+                <ul>
+                  <li> 15 min between 9:15 and 9:30</li>
+                  <li> 30 min between 12:00 and 13:00.</li>
+                </ul>
+                <p class="card-text">Timestamps are expected in the
+                  format <code>hh:mm</code>, or <code>now</code> for
+                  the current time. Timestamps and ranges have to be
+                  ordered in time.</p>
+                <p class="card-text">All calculations are done in the
+                  browser, no input data is sent to remote servers.</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
+
+    <footer class="footer">
+      <div class="container text-center">
+        <a href="https://github.com/heikoengel/heikoengel.github.io/tree/main/timetowin">
+          <img src="img/GitHub-Mark-32px.png"/></a>
+      </div>
+    </footer>
 
     <script src="js/timetowin.js"></script>
 
