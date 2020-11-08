@@ -118,11 +118,11 @@ function addRow(fields, obj, trclass="") {
 }
 
 
-function get_time(str) {
+function str_to_timestamp(str) {
     /** get Timestamp() object from a time string **/
     var result = {
         value: 0,
-        err: "\"" + str + "\"" + " is not a valid time"};
+        err: "\"" + str + "\"" + " is not a valid timestamp"};
     let now = new Date();
     let hour = now.getHours();
     let minute = now.getMinutes();
@@ -146,57 +146,33 @@ function get_time(str) {
     return result;
 }
 
-
-function update_time_calc(){
-
-    const error = document.querySelector("#error-message");
-    error.textContent = "";
-    error.style.display = "none";
-
-    const result = document.querySelector("#result-message");
-    result.textContent = "";
-    result.style.display = "none";
-
-    const table = document.querySelector("#results-table");
-    for (var row = table.rows.length - 1; row >= 0; row--) {
-        table.deleteRow(row);  // delete all old rows from table
-    }
-
-    // get text from input field and split it
-    const timefield = document.querySelector("#times");
-    let values = timefield.value.split(/[\s,-.;\n\r]+/);
-
-    var timerange = new Array(); // timerange tuple {start, end}
+function calculate_time(input_str) {
+    let values = input_str.split(/[\s,-.;\n\r]+/);
+    var timerange = new Array(); // timerange tuple [start, end]
     var times = new Array(); // list of timerange tuples
     for(var i = 0; i < values.length; i++) {
         if(values[i].length == 0) {
-            continue; // skip empty elements due to linebreaks, blanks, etc...
+            continue; // skip empty elements, e.g. due to linebreaks, blanks, etc...
         }
         // parse input data as timestamps
-        let time = get_time(values[i])
+        let time = str_to_timestamp(values[i])
         if (time.err) {
-            error.textContent = time.err;
-            error.style.display = "block";
-            return;
+            return {err: time.err};
         };
         timerange.push(time.value);
 
-        // arrange timestamps in pairs {start, end}
+        // arrange timestamps in pairs [start, end]
         if (timerange.length == 2) {
             // make sure time pair is in the right order
             if (timerange[0].cmp("gt", timerange[1])) {
-                error.textContent = "Invalid order of timestamps: " +
-                    timerange[0].strHHMM() + " is after " +
-                    timerange[1].strHHMM();
-                error.style.display = "block";
-                return
+                return {err: "Invalid order of timestamps: " +
+                        timerange[0].strHHMM() + " is after " +
+                        timerange[1].strHHMM()};
             }
             // make sure start of current pair is after end of the last pair
             if (times.length > 0 && timerange[0].cmp("lt", times[times.length-1][1])) {
-                error.textContent = "Invalid order of ranges: " + timerange[0].strHHMM() +
-                    " is after " + times[times.length-1][1].strHHMM();
-                error.style.display = "block";
-                return
+                return {err: "Invalid order of ranges: " + timerange[0].strHHMM() +
+                        " is after " + times[times.length-1][1].strHHMM()};
             }
             times.push(timerange); // push to times list
             timerange = new Array(); // clear timerange tuple
@@ -204,14 +180,10 @@ function update_time_calc(){
     }
 
     if (timerange.length == 1) {
-        error.textContent = "Odd number of timestamps, add another time entry or \"now\" for the current time";
-        error.style.display = "block";
-        return;
+        return {err: "Odd number of timestamps, add another time entry or \"now\" for the current time"};
     }
     if (times.length == 0) {
-        error.textContent = "Add timestamp entries or \"now\" for the current time";
-        error.style.display = "block";
-        return;
+        return {err: "Add timestamp entries or \"now\" for the current time"};
     }
 
     var total_time = new Timestamp(0, 0);
@@ -252,16 +224,14 @@ function update_time_calc(){
 
     var data = Array();
     for (var i = 0; i < times.length; i ++ ) {
-        // time delta is in milliseconds
         let delta = new Timestamp(times[i][1]);
-        delta.sub(times[i][0]);
-        total_time.add(delta);
+        delta.sub(times[i][0]); // delta between start timestamp and end timestamp
+        total_time.add(delta); // add delta to total time
         var range = times[i][0].strHHMM() + " - " + times[i][1].strHHMM();
-        var delta_hhmm = delta.strHHMM();
-        var delta_dec = delta.strDec();
-        let entry = [range, delta_hhmm, delta_dec];
+        let entry = [range, delta.strHHMM(), delta.strDec()];
         data.push(entry);
 
+        // evaluate the breaks between time ranges
         if ((i < times.length - 1) && times[i+1][0].cmp("gt", times[i][1])) {
             // non-zero break
             if (times[i][1].cmp("lte", 9, 30) && times[i+1][0].cmp("gte", 9, 15)) {
@@ -301,32 +271,68 @@ function update_time_calc(){
         }
     }
 
-    result.textContent = "Subtracted " + morning_break.strHHMM() + " (" +
-        morning_break.strDec() + "h) for morning  break and " +
-        lunch_break.strHHMM() + " (" + lunch_break.strDec() +
+    // reduce total time by breaks
+    let effective_time = new Timestamp(total_time);
+    effective_time.sub(morning_break);
+    effective_time.sub(lunch_break);
+
+    return {total_time: total_time, effective_time: effective_time,
+            morning_break: morning_break, lunch_break: lunch_break,
+            data: data, err:""};
+}
+
+
+function update_page(){
+
+    const error = document.querySelector("#error-message");
+    error.textContent = "";
+    error.style.display = "none";
+
+    const result = document.querySelector("#result-message");
+    result.textContent = "";
+    result.style.display = "none";
+
+    const table = document.querySelector("#results-table");
+    for (var row = table.rows.length - 1; row >= 0; row--) {
+        table.deleteRow(row);  // delete all old rows from table
+    }
+
+    // get text from input field
+    const timefield = document.querySelector("#times");
+
+    // calculate the results
+    let ret = calculate_time(timefield.value);
+    if (ret.err) {
+        error.textContent = ret.err;
+        error.style.display = "block";
+        return;
+    }
+
+    // set infobox content
+    result.textContent = "Subtracted " + ret.morning_break.strHHMM() + " (" +
+        ret.morning_break.strDec() + "h) for morning  break and " +
+        ret.lunch_break.strHHMM() + " (" + ret.lunch_break.strDec() +
         "h) for lunchtime break";
 
-    // reduce total time by breaks
-    let effective_delta = new Timestamp(total_time);
-    effective_delta.sub(morning_break);
-    effective_delta.sub(lunch_break);
-
-    // fill results into the table
-    for (var row = 0; row < data.length; row++) {
-        addRow(data[row], table);
+    // fill calculation results into the table
+    for (var row = 0; row < ret.data.length; row++) {
+        addRow(ret.data[row], table);
     }
 
     // append the 'total' row to the table
-    let entry = ["Total", effective_delta.strHHMM(), effective_delta.strDec()];
+    let entry = ["Total", ret.effective_time.strHHMM(),
+                 ret.effective_time.strDec()];
     addRow(entry, table, "table-success");
 
     result.style.display = "block";
 }
 
+// update the results each time a character is changed in the input text field
 document.getElementById("times").addEventListener("input", function(e){
-    update_time_calc()
+    update_page()
 });
 
+// update the results when the 'update' button is clicked
 document.getElementById("btn-update").addEventListener("click", function(e){
-    update_time_calc()
+    update_page()
 });
