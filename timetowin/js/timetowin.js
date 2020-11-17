@@ -131,7 +131,8 @@ function str_to_timestamp(str) {
         if (elems.length != 2) {
             return result;
         }
-        if (elems[0].length != 2) {
+        if (elems[0].length != 1 && elems[0].length != 2) {
+            // allow hour to be 1 or 2 digits
             return result;
         }
         hour = Number(elems[0]);
@@ -139,6 +140,7 @@ function str_to_timestamp(str) {
             return result;
         }
         if (elems[1].length != 2) {
+            // require minute to be 2 digits
             return result;
         }
         minute = Number(elems[1]);
